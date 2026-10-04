@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trip Tiffin – POS & Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { -webkit-tap-highlight-color: transparent; }
+    .menu-card:active { transform: scale(.97); }
+  </style>
+</head>
+<body class="bg-yellow-50 text-red-900 min-h-screen">
+
+  <!-- NAV -->
+  <header class="bg-yellow-300 border-b-4 border-red-900 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-3 py-2 flex flex-wrap items-center gap-2 justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-3xl">🍱</span>
+        <div>
+          <h1 class="text-xl font-extrabold leading-none">Trip Tiffin</h1>
+          <p id="syncStatus" class="text-[11px] opacity-70">Connecting…</p>
+        </div>
+      </div>
+      <nav class="flex flex-wrap gap-1.5" id="tabs">
+        <button data-tab="billing"   class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Billing</button>
+        <button data-tab="inventory" class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Inventory <span id="lowBadge" class="hidden ml-1 bg-red-600 text-white rounded-full px-1.5 text-xs"></span></button>
+        <button data-tab="customers" class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Customers</button>
+        <button data-tab="reminders" class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Reminders <span id="remBadge" class="hidden ml-1 bg-red-600 text-white rounded-full px-1.5 text-xs"></span></button>
+        <button onclick="resetData()" class="px-3 py-1.5 rounded-lg font-bold bg-red-900 text-yellow-100 text-sm">Reset Data</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-3">
+
+    <!-- BILLING -->
+    <section id="tab-billing" class="tab hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="lg:col-span-2 space-y-6">
+          <div>
+            <h2 class="text-lg font-extrabold mb-2 border-b-2 border-red-900 pb-1">Regular Menu</h2>
+            <div id="menuRegular" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2"></div>
+          </div>
+          <div>
+            <h2 class="text-lg font-extrabold mb-2 border-b-2 border-green-800 pb-1 text-green-900">🌿 Jain Menu</h2>
+            <div id="menuJain" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2"></div>
+          </div>
+        </div>
+
+        <aside class="lg:col-span-1">
+          <div class="bg-white border-2 border-red-900 rounded-xl p-4 shadow-lg lg:sticky lg:top-24">
+            <h2 class="text-lg font-extrabold mb-3">Current Invoice</h2>
+            <input id="custName"  type="text" placeholder="Customer Name" class="w-full border-2 border-red-900 rounded-lg px-3 py-2 mb-2 bg-yellow-50" />
+            <input id="custPhone" type="tel" inputmode="numeric" maxlength="15" placeholder="Customer Phone No. *" class="w-full border-2 border-red-900 rounded-lg px-3 py-2 mb-1 bg-yellow-50" />
+            <p id="custHint" class="text-xs mb-3 h-4 text-green-800"></p>
+            <div id="cartList" class="space-y-2 max-h-72 overflow-y-auto mb-3"></div>
+            <div class="flex justify-between items-center border-t-2 border-red-900 pt-3 mb-3">
+              <span class="font-bold">Grand Total</span>
+              <span id="grandTotal" class="text-2xl font-extrabold">₹0</span>
+            </div>
+            <button id="checkoutBtn" onclick="checkout()" class="w-full bg-red-900 text-yellow-100 font-bold py-3 rounded-lg hover:bg-red-800 disabled:opacity-50">Complete Order &amp; Save Data</button>
+            <button onclick="clearCart()" class="w-full mt-2 border-2 border-red-900 font-bold py-2 rounded-lg text-sm">Clear Cart</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- INVENTORY -->
+    <section id="tab-inventory" class="tab hidden">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-xl font-extrabold">Inventory</h2>
+        <button onclick="openItemModal()" class="bg-red-900 text-yellow-100 font-bold px-4 py-2 rounded-lg text-sm">+ Add Item</button>
+      </div>
+      <div class="bg-white border-2 border-red-900 rounded-xl overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-yellow-300 text-left">
+            <tr><th class="p-3">Item Name</th><th class="p-3">Category</th><th class="p-3">Price</th><th class="p-3">Current Stock</th><th class="p-3 text-right">Actions</th></tr>
+          </thead>
+          <tbody id="invBody"></tbody>
+        </table>
+      </div>
+      <p class="text-xs mt-2 opacity-70">Stock below 10 is shown in bold red.</p>
+    </section>
+
+    <!-- CUSTOMERS -->
+    <section id="tab-customers" class="tab hidden">
+      <h2 class="text-xl font-extrabold mb-3">Customers <span class="text-sm font-normal opacity-70">(top spenders first)</span></h2>
+      <input id="custSearch" oninput="renderCustomers()" placeholder="Search name or phone…" class="w-full sm:w-72 border-2 border-red-900 rounded-lg px-3 py-2 mb-3 bg-white" />
+      <div class="bg-white border-2 border-red-900 rounded-xl overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-yellow-300 text-left">
+            <tr><th class="p-3">#</th><th class="p-3">Name</th><th class="p-3">Phone</th><th class="p-3">Total Spent (₹)</th><th class="p-3">Total Orders</th></tr>
+          </thead>
+          <tbody id="custBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- REMINDERS -->
+    <section id="tab-reminders" class="tab hidden">
+      <h2 class="text-xl font-extrabold mb-3">Reminders</h2>
+      <div class="bg-white border-2 border-red-900 rounded-xl p-4 mb-4 flex flex-col sm:flex-row gap-2">
+        <input id="remText" placeholder="e.g. Order paneer, pay vendor, refill gas…" class="flex-1 border-2 border-red-900 rounded-lg px-3 py-2 bg-yellow-50" />
+        <input id="remDue" type="date" class="border-2 border-red-900 rounded-lg px-3 py-2 bg-yellow-50" />
+        <button onclick="addReminder()" class="bg-red-900 text-yellow-100 font-bold px-5 py-2 rounded-lg">Add</button>
+      </div>
+      <div id="remList" class="space-y-2"></div>
+    </section>
+  </main>
+
+  <!-- ITEM MODAL -->
+  <div id="itemModal" class="hidden fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
+    <div class="bg-yellow-50 border-4 border-red-900 rounded-xl p-5 w-full max-w-sm">
+      <h3 id="itemModalTitle" class="text-lg font-extrabold mb-3">Add Item</h3>
+      <input type="hidden" id="mId" />
+      <label class="text-xs font-bold">Name</label>
+      <input id="mName" class="w-full border-2 border-red-900 rounded-lg px-3 py-2 mb-2 bg-white" />
+      <label class="text-xs font-bold">Category</label>
+      <select id="mCat" class="w-full border-2 border-red-900 rounded-lg px-3 py-2 mb-2 bg-white"><option>Regular</option><option>Jain</option></select>
+      <div class="grid grid-cols-2 gap-2 mb-4">
+        <div><label class="text-xs font-bold">Price (₹)</label><input id="mPrice" type="number" min="0" class="w-full border-2 border-red-900 rounded-lg px-3 py-2 bg-white" /></div>
+        <div><label class="text-xs font-bold">Stock</label><input id="mStock" type="number" min="0" class="w-full border-2 border-red-900 rounded-lg px-3 py-2 bg-white" /></div>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="saveItem()" class="flex-1 bg-red-900 text-yellow-100 font-bold py-2 rounded-lg">Save</button>
+        <button onclick="closeItemModal()" class="flex-1 border-2 border-red-900 font-bold py-2 rounded-lg">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ---------- State ---------- */
+let S = { items: [], customers: {}, reminders: [] };
+let cart = {};                       // { itemId: qty }
+let currentTab = localStorage.getItem('tt_tab') || 'billing';
+let PIN = localStorage.getItem('tt_pin') || '';
+let lastJson = '';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const inr = (n) => '₹' + Number(n).toLocaleString('en-IN');
+const today = () => new Date().toISOString().slice(0, 10);
+
+/* ---------- API ---------- */
+async function api(path, body) {
+  const res = await fetch('/api/' + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'content-type': 'application/json', 'x-pin': PIN },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) {
+    const p = prompt('Enter Trip Tiffin PIN:');
+    if (p === null) throw new Error('PIN required');
+    PIN = p; localStorage.setItem('tt_pin', PIN);
+    return api(path, body);
+  }
+  let data = {};
+  try { data = await res.json(); } catch {}
+  if (!res.ok) throw new Error(data.error || 'Server error');
+  return data;
+}
+
+function applyState(state) {
+  const j = JSON.stringify(state);
+  if (j === lastJson) return;
+  lastJson = j;
+  S = state;
+  // clamp cart to live stock / remove deleted items
+  for (const id of Object.keys(cart)) {
+    const it = S.items.find(i => i.id === id);
+    if (!it || it.stock <= 0) delete cart[id];
+    else if (cart[id] > it.stock) cart[id] = it.stock;
+  }
+  renderAll();
+}
+
+async function load(silent) {
+  try {
+    applyState(await api('data'));
+    $('syncStatus').textContent = '● Live · synced ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  } catch (e) {
+    $('syncStatus').textContent = '○ Offline – ' + e.message;
+    if (!silent) alert('Could not load data: ' + e.message);
+  }
+}
+
+/* ---------- Tabs ---------- */
+function showTab(t) {
+  currentTab = t; localStorage.setItem('tt_tab', t);
+  document.querySelectorAll('.tab').forEach(el => el.classList.add('hidden'));
+  $('tab-' + t).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    const on = b.dataset.tab === t;
+    b.classList.toggle('bg-red-900', on);
+    b.classList.toggle('text-yellow-100', on);
+  });
+}
+document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+/* ---------- Render ---------- */
+function renderAll() { renderBilling(); renderInventory(); renderCustomers(); renderReminders(); showTab(currentTab); }
+
+function cardHTML(it) {
+  const out = it.stock <= 0, low = it.stock < 10;
+  const inCart = cart[it.id] || 0;
+  return `<button onclick="addToCart('${it.id}')" ${out ? 'disabled' : ''}
+    class="menu-card text-left bg-white border-2 ${out ? 'border-gray-300 opacity-50' : 'border-red-900 hover:bg-yellow-100'} rounded-xl p-3 relative transition">
+    ${inCart ? `<span class="absolute -top-2 -right-2 bg-red-900 text-yellow-100 rounded-full w-6 h-6 text-xs flex items-center justify-center font-bold">${inCart}</span>` : ''}
+    <div class="font-bold leading-tight">${esc(it.name)}</div>
+    <div class="text-lg font-extrabold mt-1">${inr(it.price)}</div>
+    <div class="text-xs mt-1 ${low ? 'text-red-600 font-bold' : 'opacity-70'}">${out ? 'Out of stock' : 'Stock: ' + it.stock}</div>
+  </button>`;
+}
+
+function renderBilling() {
+  $('menuRegular').innerHTML = S.items.filter(i => i.category === 'Regular').map(cardHTML).join('') || '<p class="text-sm opacity-60">No items.</p>';
+  $('menuJain').innerHTML    = S.items.filter(i => i.category === 'Jain').map(cardHTML).join('')    || '<p class="text-sm opacity-60">No items.</p>';
+
+  const ids = Object.keys(cart);
+  let total = 0;
+  $('cartList').innerHTML = ids.length ? ids.map(id => {
+    const it = S.items.find(i => i.id === id); const q = cart[id]; total += it.price * q;
+    return `<div class="flex items-center justify-between gap-2 bg-yellow-50 border border-red-900 rounded-lg p-2">
+      <div class="min-w-0">
+        <div class="font-bold text-sm truncate">${esc(it.name)} ${it.category === 'Jain' ? '<span class="text-green-700 text-xs">(Jain)</span>' : ''}</div>
+        <div class="text-xs opacity-70">${inr(it.price)} × ${q} = ${inr(it.price * q)}</div>
+      </div>
+      <div class="flex items-center gap-1 shrink-0">
+        <button onclick="changeQty('${id}',-1)" class="w-7 h-7 rounded bg-red-900 text-yellow-100 font-bold">−</button>
+        <span class="w-6 text-center font-bold">${q}</span>
+        <button onclick="changeQty('${id}',1)" class="w-7 h-7 rounded bg-red-900 text-yellow-100 font-bold">+</button>
+      </div></div>`;
+  }).join('') : '<p class="text-sm opacity-60 text-center py-4">Cart is empty. Tap a menu item.</p>';
+  $('grandTotal').textContent = inr(total);
+}
+
+function renderInventory() {
+  const rows = [...S.items].sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+  $('invBody').innerHTML = rows.map(i => `<tr class="border-t border-yellow-200">
+    <td class="p-3 font-semibold">${esc(i.name)}</td>
+    <td class="p-3">${i.category === 'Jain' ? '<span class="text-green-700 font-semibold">Jain</span>' : 'Regular'}</td>
+    <td class="p-3">${inr(i.price)}</td>
+    <td class="p-3 ${i.stock < 10 ? 'text-red-600 font-extrabold' : ''}">${i.stock}${i.stock < 10 ? ' ⚠' : ''}</td>
+    <td class="p-3 text-right whitespace-nowrap">
+      <button onclick="openItemModal('${i.id}')" class="border-2 border-red-900 rounded px-2 py-0.5 text-xs font-bold">Edit / Restock</button>
+      <button onclick="deleteItem('${i.id}')" class="text-red-600 text-xs font-bold ml-1">✕</button>
+    </td></tr>`).join('');
+  const low = S.items.filter(i => i.stock < 10).length;
+  $('lowBadge').textContent = low; $('lowBadge').classList.toggle('hidden', !low);
+}
+
+function renderCustomers() {
+  const q = ($('custSearch').value || '').toLowerCase().trim();
+  const list = Object.values(S.customers)
+    .filter(c => !q || c.name.toLowerCase().includes(q) || c.phone.includes(q))
+    .sort((a, b) => b.totalSpent - a.totalSpent);
+  $('custBody').innerHTML = list.length ? list.map((c, i) => `<tr class="border-t border-yellow-200">
+    <td class="p-3">${i === 0 && !q ? '🏆' : i + 1}</td>
+    <td class="p-3 font-semibold">${esc(c.name)}</td>
+    <td class="p-3"><a href="tel:${esc(c.phone)}" class="underline">${esc(c.phone)}</a></td>
+    <td class="p-3 font-bold">${inr(c.totalSpent)}</td>
+    <td class="p-3">${c.orders}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="p-6 text-center opacity-60">No customers yet.</td></tr>';
+}
+
+function renderReminders() {
+  const list = [...S.reminders].sort((a, b) => (a.done - b.done) || (a.due || '9999').localeCompare(b.due || '9999'));
+  $('remList').innerHTML = list.length ? list.map(r => {
+    const overdue = !r.done && r.due && r.due < today();
+    const dueToday = !r.done && r.due === today();
+    return `<div class="flex items-center gap-3 bg-white border-2 ${overdue ? 'border-red-600' : 'border-red-900'} rounded-xl p-3">
+      <input type="checkbox" ${r.done ? 'checked' : ''} onchange="toggleReminder('${r.id}')" class="w-5 h-5 accent-red-900" />
+      <div class="flex-1 min-w-0 ${r.done ? 'line-through opacity-50' : ''}">
+        <div class="font-semibold">${esc(r.text)}</div>
+        ${r.due ? `<div class="text-xs ${overdue ? 'text-red-600 font-bold' : ''}">${overdue ? 'Overdue · ' : dueToday ? 'Due today · ' : 'Due · '}${esc(r.due)}</div>` : ''}
+      </div>
+      <button onclick="deleteReminder('${r.id}')" class="text-red-600 font-bold">✕</button></div>`;
+  }).join('') : '<p class="opacity-60 text-center py-6">No reminders. Add one above.</p>';
+  const pending = S.reminders.filter(r => !r.done && r.due && r.due <= today()).length;
+  $('remBadge').textContent = pending; $('remBadge').classList.toggle('hidden', !pending);
+}
+
+/* ---------- Cart ---------- */
+function addToCart(id) {
+  const it = S.items.find(i => i.id === id);
+  if (!it) return;
+  if (it.stock <= 0) return alert(it.name + ' is out of stock.');
+  if ((cart[id] || 0) >= it.stock) return alert('Maximum available stock (' + it.stock + ') reached for ' + it.name + '.');
+  cart[id] = (cart[id] || 0) + 1;
+  renderBilling();
+}
+function changeQty(id, d) {
+  const it = S.items.find(i => i.id === id);
+  const n = (cart[id] || 0) + d;
+  if (n <= 0) delete cart[id];
+  else if (n > it.stock) return alert('Maximum available stock (' + it.stock + ') reached for ' + it.name + '.');
+  else cart[id] = n;
+  renderBilling();
+}
+function clearCart() { cart = {}; renderBilling(); }
+
+// Auto-fill name for returning customers
+$('custPhone').addEventListener('input', () => {
+  const p = $('custPhone').value.replace(/\D/g, '');
+  const c = S.customers[p];
+  $('custHint').textContent = c ? `Returning customer · ${c.orders} orders · ${inr(c.totalSpent)} spent` : '';
+  if (c && !$('custName').value) $('custName').value = c.name;
+});
+
+async function checkout() {
+  const phone = $('custPhone').value.replace(/\D/g, '');
+  const name = $('custName').value.trim();
+  if (!Object.keys(cart).length) return alert('Cart is empty.');
+  if (phone.length < 10) return alert('Please enter a valid customer phone number (10 digits).');
+  const btn = $('checkoutBtn'); btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const items = Object.entries(cart).map(([id, qty]) => ({ id, qty }));
+    const r = await api('checkout', { name, phone, items });
+    cart = {}; $('custName').value = ''; $('custPhone').value = ''; $('custHint').textContent = '';
+    lastJson = ''; applyState(r.state);
+    alert('✅ Order saved! Total: ' + inr(r.total));
+  } catch (e) {
+    alert('❌ ' + e.message);
+    load(true);
+  } finally { btn.disabled = false; btn.textContent = 'Complete Order & Save Data'; }
+}
+
+/* ---------- Inventory actions ---------- */
+function openItemModal(id) {
+  const it = id ? S.items.find(i => i.id === id) : null;
+  $('itemModalTitle').textContent = it ? 'Edit / Restock Item' : 'Add Item';
+  $('mId').value = it ? it.id : '';
+  $('mName').value = it ? it.name : '';
+  $('mCat').value = it ? it.category : 'Regular';
+  $('mPrice').value = it ? it.price : '';
+  $('mStock').value = it ? it.stock : 50;
+  $('itemModal').classList.remove('hidden');
+}
+function closeItemModal() { $('itemModal').classList.add('hidden'); }
+async function saveItem() {
+  try {
+    const r = await api('item', {
+      id: $('mId').value || undefined, name: $('mName').value, category: $('mCat').value,
+      price: $('mPrice').value, stock: $('mStock').value,
+    });
+    closeItemModal(); lastJson = ''; applyState(r.state);
+  } catch (e) { alert('❌ ' + e.message); }
+}
+async function deleteItem(id) {
+  const it = S.items.find(i => i.id === id);
+  if (!confirm(`Delete "${it.name}" (${it.category}) from the menu?`)) return;
+  try { const r = await api('item-delete', { id }); lastJson = ''; applyState(r.state); }
+  catch (e) { alert('❌ ' + e.message); }
+}
+
+/* ---------- Reminders ---------- */
+async function addReminder() {
+  const text = $('remText').value.trim();
+  if (!text) return alert('Type a reminder first.');
+  try {
+    const r = await api('reminder', { text, due: $('remDue').value });
+    $('remText').value = ''; $('remDue').value = '';
+    lastJson = ''; applyState(r.state);
+  } catch (e) { alert('❌ ' + e.message); }
+}
+async function toggleReminder(id) { try { const r = await api('reminder-toggle', { id }); lastJson = ''; applyState(r.state); } catch (e) { alert(e.message); } }
+async function deleteReminder(id) { try { const r = await api('reminder-delete', { id }); lastJson = ''; applyState(r.state); } catch (e) { alert(e.message); } }
+
+/* ---------- Reset ---------- */
+async function resetData() {
+  if (!confirm('⚠ This will erase ALL customers, reminders and restore default menu & stock (50 each) for EVERY device. Continue?')) return;
+  if (prompt('Type RESET to confirm:') !== 'RESET') return;
+  try { const r = await api('reset', {}); cart = {}; lastJson = ''; applyState(r.state); alert('Data reset.'); }
+  catch (e) { alert('❌ ' + e.message); }
+}
+
+/* ---------- Boot ---------- */
+showTab(currentTab);
+load();
+setInterval(() => { if (!document.hidden) load(true); }, 15000);   // pick up changes from other phones
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(true); });
+</script>
+</body>
+</html>

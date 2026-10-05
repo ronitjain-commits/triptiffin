@@ -13,14 +13,34 @@ const JAIN = [
   ["Veg. Pulao", 225], ["Idli Sambhar", 175], ["Dal Khichdi", 200], ["Mix Dal", 200], ["Green Chutney", 200],
 ];
 
+const MAX_ORDERS = 3000;
+const MAX_EXPENSES = 3000;
+
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+const invoiceId = (n) => `TT-${String(n).padStart(4, "0")}`;
 
 function seed() {
   const items = [
     ...REGULAR.map(([name, price]) => ({ id: `r-${slug(name)}`, name, category: "Regular", price, stock: 50 })),
     ...JAIN.map(([name, price]) => ({ id: `j-${slug(name)}`, name, category: "Jain", price, stock: 50 })),
   ];
-  return { items, customers: {}, reminders: [], orders: [] };
+  return { items, customers: {}, reminders: [], orders: [], expenses: [], nextInvoice: 1 };
+}
+
+// Upgrades data saved by the older version of the app
+function normalize(s) {
+  s.items ||= [];
+  s.customers ||= {};
+  s.reminders ||= [];
+  s.orders ||= [];
+  s.expenses ||= [];
+  let n = s.nextInvoice || 1;
+  for (const o of s.orders) {
+    if (!o.no) { o.no = n++; o.invoice = invoiceId(o.no); }
+    if (!o.payment) o.payment = "Cash";
+  }
+  s.nextInvoice = n;
+  return s;
 }
 
 const json = (data, status = 200) =>
@@ -31,7 +51,13 @@ const json = (data, status = 200) =>
 
 const fail = (msg, status = 400) => json({ error: msg }, status);
 
-const publicState = (s) => ({ items: s.items, customers: s.customers, reminders: s.reminders });
+const publicState = (s) => ({
+  items: s.items,
+  customers: s.customers,
+  reminders: s.reminders,
+  orders: s.orders,
+  expenses: s.expenses,
+});
 
 export default async (req) => {
   // Optional PIN protection (set APP_PIN in Netlify environment variables)
@@ -46,6 +72,7 @@ export default async (req) => {
     state = seed();
     await store.setJSON("state", state);
   }
+  state = normalize(state);
   const save = () => store.setJSON("state", state);
 
   if (req.method === "GET" && route === "data") return json(publicState(state));
@@ -59,6 +86,7 @@ export default async (req) => {
       const phone = String(body.phone || "").replace(/\D/g, "");
       if (phone.length < 10) return fail("Enter a valid phone number (at least 10 digits).");
       const name = String(body.name || "").trim().slice(0, 60) || "Walk-in Customer";
+      const payment = body.payment === "UPI" ? "UPI" : "Cash";
       const lines = Array.isArray(body.items) ? body.items : [];
       if (!lines.length) return fail("Cart is empty.");
 
@@ -82,11 +110,15 @@ export default async (req) => {
       c.lastOrder = new Date().toISOString();
       state.customers[phone] = c;
 
-      state.orders.push({ at: c.lastOrder, phone, name: c.name, total, lines: orderLines });
-      if (state.orders.length > 500) state.orders = state.orders.slice(-500);
+      const no = state.nextInvoice++;
+      const order = {
+        no, invoice: invoiceId(no), at: c.lastOrder, phone, name: c.name, total, payment, lines: orderLines,
+      };
+      state.orders.push(order);
+      if (state.orders.length > MAX_ORDERS) state.orders = state.orders.slice(-MAX_ORDERS);
 
       await save();
-      return json({ ok: true, total, state: publicState(state) });
+      return json({ ok: true, total, order, state: publicState(state) });
     }
 
     case "item": {
@@ -109,6 +141,28 @@ export default async (req) => {
 
     case "item-delete": {
       state.items = state.items.filter((i) => i.id !== body.id);
+      await save();
+      return json({ ok: true, state: publicState(state) });
+    }
+
+    case "expense": {
+      const amount = Number(body.amount);
+      const note = String(body.note || "").trim().slice(0, 120);
+      const category = String(body.category || "Other").trim().slice(0, 30) || "Other";
+      const payment = body.payment === "UPI" ? "UPI" : "Cash";
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(body.date || "") ? body.date : new Date().toISOString().slice(0, 10);
+      if (!note) return fail("Enter a description for the expense.");
+      if (!(amount > 0)) return fail("Enter a valid expense amount.");
+      state.expenses.push({
+        id: `e${Date.now()}`, date, category, note, amount, payment, created: new Date().toISOString(),
+      });
+      if (state.expenses.length > MAX_EXPENSES) state.expenses = state.expenses.slice(-MAX_EXPENSES);
+      await save();
+      return json({ ok: true, state: publicState(state) });
+    }
+
+    case "expense-delete": {
+      state.expenses = state.expenses.filter((e) => e.id !== body.id);
       await save();
       return json({ ok: true, state: publicState(state) });
     }

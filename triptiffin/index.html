@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Trip Tiffin – POS & Manager</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     body { -webkit-tap-highlight-color: transparent; }
     .menu-card:active { transform: scale(.97); }
@@ -24,8 +25,10 @@
       </div>
       <nav class="flex flex-wrap gap-1.5" id="tabs">
         <button data-tab="billing"   class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Billing</button>
+        <button data-tab="orders"    class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Orders</button>
         <button data-tab="inventory" class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Inventory <span id="lowBadge" class="hidden ml-1 bg-red-600 text-white rounded-full px-1.5 text-xs"></span></button>
         <button data-tab="customers" class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Customers</button>
+        <button data-tab="finance"   class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Sales &amp; Expenses</button>
         <button data-tab="reminders" class="tab-btn px-3 py-1.5 rounded-lg font-bold border-2 border-red-900 text-sm">Reminders <span id="remBadge" class="hidden ml-1 bg-red-600 text-white rounded-full px-1.5 text-xs"></span></button>
         <button onclick="resetData()" class="px-3 py-1.5 rounded-lg font-bold bg-red-900 text-yellow-100 text-sm">Reset Data</button>
       </nav>
@@ -55,6 +58,15 @@
             <input id="custPhone" type="tel" inputmode="numeric" maxlength="15" placeholder="Customer Phone No. *" class="w-full border-2 border-red-900 rounded-lg px-3 py-2 mb-1 bg-yellow-50" />
             <p id="custHint" class="text-xs mb-3 h-4 text-green-800"></p>
             <div id="cartList" class="space-y-2 max-h-72 overflow-y-auto mb-3"></div>
+
+            <div class="mb-3">
+              <div class="text-xs font-bold mb-1">Payment Mode</div>
+              <div class="grid grid-cols-2 gap-2">
+                <button id="payCash" onclick="setPay('Cash')" class="py-2 rounded-lg border-2 border-red-900 font-bold">💵 Cash</button>
+                <button id="payUPI"  onclick="setPay('UPI')"  class="py-2 rounded-lg border-2 border-red-900 font-bold">📱 UPI</button>
+              </div>
+            </div>
+
             <div class="flex justify-between items-center border-t-2 border-red-900 pt-3 mb-3">
               <span class="font-bold">Grand Total</span>
               <span id="grandTotal" class="text-2xl font-extrabold">₹0</span>
@@ -64,6 +76,21 @@
           </div>
         </aside>
       </div>
+    </section>
+
+    <!-- ORDERS -->
+    <section id="tab-orders" class="tab hidden">
+      <h2 class="text-xl font-extrabold mb-3">Orders / Bills</h2>
+      <input id="ordSearch" oninput="renderOrders()" placeholder="Search invoice no, name or phone…" class="w-full sm:w-80 border-2 border-red-900 rounded-lg px-3 py-2 mb-3 bg-white" />
+      <div class="bg-white border-2 border-red-900 rounded-xl overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-yellow-300 text-left">
+            <tr><th class="p-3">Invoice</th><th class="p-3">Date</th><th class="p-3">Customer</th><th class="p-3 hidden md:table-cell">Items</th><th class="p-3">Paid</th><th class="p-3">Total</th><th class="p-3 text-right">Bill</th></tr>
+          </thead>
+          <tbody id="ordBody"></tbody>
+        </table>
+      </div>
+      <p id="ordNote" class="text-xs mt-2 opacity-70"></p>
     </section>
 
     <!-- INVENTORY -->
@@ -90,9 +117,53 @@
       <div class="bg-white border-2 border-red-900 rounded-xl overflow-x-auto">
         <table class="w-full text-sm">
           <thead class="bg-yellow-300 text-left">
-            <tr><th class="p-3">#</th><th class="p-3">Name</th><th class="p-3">Phone</th><th class="p-3">Total Spent (₹)</th><th class="p-3">Total Orders</th></tr>
+            <tr><th class="p-3">#</th><th class="p-3">Name</th><th class="p-3">Phone</th><th class="p-3">Total Spent (₹)</th><th class="p-3">Total Orders</th><th class="p-3 text-right">History</th></tr>
           </thead>
           <tbody id="custBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SALES & EXPENSES -->
+    <section id="tab-finance" class="tab hidden">
+      <h2 class="text-xl font-extrabold mb-3">Sales &amp; Expenses</h2>
+
+      <div class="bg-white border-2 border-red-900 rounded-xl p-3 mb-3 flex flex-wrap items-end gap-2">
+        <button onclick="setPeriod('today')" class="border-2 border-red-900 rounded-lg px-3 py-1.5 text-sm font-bold">Today</button>
+        <button onclick="setPeriod('month')" class="border-2 border-red-900 rounded-lg px-3 py-1.5 text-sm font-bold">This Month</button>
+        <button onclick="setPeriod('all')"   class="border-2 border-red-900 rounded-lg px-3 py-1.5 text-sm font-bold">All Time</button>
+        <div class="flex items-end gap-2 ml-auto">
+          <div><label class="text-xs font-bold block">From</label><input id="fFrom" type="date" onchange="renderFinance()" class="border-2 border-red-900 rounded-lg px-2 py-1 bg-yellow-50 text-sm" /></div>
+          <div><label class="text-xs font-bold block">To</label><input id="fTo" type="date" onchange="renderFinance()" class="border-2 border-red-900 rounded-lg px-2 py-1 bg-yellow-50 text-sm" /></div>
+        </div>
+      </div>
+
+      <div id="finCards" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-2"></div>
+      <p class="text-xs opacity-70 mb-4">Net Profit = Sales − Expenses recorded for the selected dates.</p>
+
+      <div class="bg-white border-2 border-red-900 rounded-xl p-4 mb-4">
+        <h3 class="font-extrabold mb-2">Add Expense</h3>
+        <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+          <input id="eDate" type="date" class="border-2 border-red-900 rounded-lg px-3 py-2 bg-yellow-50" />
+          <select id="eCat" class="border-2 border-red-900 rounded-lg px-3 py-2 bg-yellow-50">
+            <option>Raw Material</option><option>Gas / Fuel</option><option>Packaging</option><option>Salary</option>
+            <option>Rent</option><option>Electricity</option><option>Transport</option><option>Marketing</option><option>Other</option>
+          </select>
+          <input id="eNote" placeholder="Description (e.g. Paneer 5kg)" class="col-span-2 border-2 border-red-900 rounded-lg px-3 py-2 bg-yellow-50" />
+          <input id="eAmt" type="number" min="0" inputmode="decimal" placeholder="Amount ₹" class="border-2 border-red-900 rounded-lg px-3 py-2 bg-yellow-50" />
+          <select id="ePay" class="border-2 border-red-900 rounded-lg px-3 py-2 bg-yellow-50"><option>Cash</option><option>UPI</option></select>
+        </div>
+        <button onclick="addExpense()" class="mt-3 bg-red-900 text-yellow-100 font-bold px-5 py-2 rounded-lg">+ Add Expense</button>
+      </div>
+
+      <div id="catBreak" class="flex flex-wrap gap-2 mb-3"></div>
+
+      <div class="bg-white border-2 border-red-900 rounded-xl overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-yellow-300 text-left">
+            <tr><th class="p-3">Date</th><th class="p-3">Category</th><th class="p-3">Description</th><th class="p-3">Paid via</th><th class="p-3">Amount</th><th class="p-3"></th></tr>
+          </thead>
+          <tbody id="expBody"></tbody>
         </table>
       </div>
     </section>
@@ -129,10 +200,46 @@
     </div>
   </div>
 
+  <!-- ORDER SUCCESS MODAL -->
+  <div id="okModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-yellow-50 border-4 border-red-900 rounded-xl p-5 w-full max-w-sm text-center">
+      <div class="text-4xl">✅</div>
+      <h3 class="text-lg font-extrabold">Order Saved!</h3>
+      <p class="text-sm mt-1">Invoice No: <b id="okInv"></b></p>
+      <p id="okMeta" class="text-sm mb-4"></p>
+      <button id="okPdf" class="w-full bg-red-900 text-yellow-100 font-bold py-2.5 rounded-lg mb-2">⬇ Download Bill (PDF)</button>
+      <a id="okWa" target="_blank" rel="noopener" class="block w-full bg-green-700 text-white font-bold py-2.5 rounded-lg mb-2">Send on WhatsApp</a>
+      <button onclick="closeOk()" class="w-full border-2 border-red-900 font-bold py-2 rounded-lg">New Order</button>
+    </div>
+  </div>
+
+  <!-- CUSTOMER HISTORY MODAL -->
+  <div id="custModal" class="hidden fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-3">
+    <div class="bg-yellow-50 border-4 border-red-900 rounded-xl p-4 w-full max-w-2xl max-h-[88vh] overflow-y-auto">
+      <div class="flex justify-between items-start mb-3">
+        <div id="custModalHead"></div>
+        <button onclick="closeCust()" class="text-2xl font-bold leading-none px-2">✕</button>
+      </div>
+      <div id="custModalBody" class="space-y-2"></div>
+    </div>
+  </div>
+
 <script>
+/* ---------- Business details printed on the PDF bill (EDIT THESE) ---------- */
+const BUSINESS = {
+  name: 'Trip Tiffin',
+  tagline: 'Fresh Homestyle Food',
+  address: '',      // e.g. 'Shop 12, Main Road, Surat - 395001'
+  phone: '',        // e.g. '+91 98765 43210'
+  gstin: '',        // leave blank if not applicable
+  fssai: '',        // leave blank if not applicable
+};
+
 /* ---------- State ---------- */
-let S = { items: [], customers: {}, reminders: [] };
+let S = { items: [], customers: {}, reminders: [], orders: [], expenses: [] };
 let cart = {};                       // { itemId: qty }
+let payMode = 'Cash';
+let openCustPhone = '';
 let currentTab = localStorage.getItem('tt_tab') || 'billing';
 let PIN = localStorage.getItem('tt_pin') || '';
 let lastJson = '';
@@ -140,7 +247,12 @@ let lastJson = '';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const inr = (n) => '₹' + Number(n).toLocaleString('en-IN');
-const today = () => new Date().toISOString().slice(0, 10);
+const ymd = (d) => new Date(d).toLocaleDateString('en-CA');           // local YYYY-MM-DD
+const today = () => ymd(new Date());
+const fmtDT = (at) => new Date(at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fmtD = (ds) => new Date(ds + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+const payBadge = (p) => `<span class="px-2 py-0.5 rounded-full text-xs font-bold ${p === 'UPI' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}">${esc(p)}</span>`;
+const itemsText = (o) => o.lines.map(l => `${l.name}${l.category === 'Jain' ? ' (Jain)' : ''} ×${l.qty}`).join(', ');
 
 /* ---------- API ---------- */
 async function api(path, body) {
@@ -166,6 +278,8 @@ function applyState(state) {
   if (j === lastJson) return;
   lastJson = j;
   S = state;
+  S.orders = S.orders || [];
+  S.expenses = S.expenses || [];
   // clamp cart to live stock / remove deleted items
   for (const id of Object.keys(cart)) {
     const it = S.items.find(i => i.id === id);
@@ -174,6 +288,7 @@ function applyState(state) {
   }
   renderAll();
 }
+function push(state) { lastJson = ''; applyState(state); }
 
 async function load(silent) {
   try {
@@ -199,7 +314,10 @@ function showTab(t) {
 document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
 /* ---------- Render ---------- */
-function renderAll() { renderBilling(); renderInventory(); renderCustomers(); renderReminders(); showTab(currentTab); }
+function renderAll() {
+  renderBilling(); renderOrders(); renderInventory(); renderCustomers();
+  renderFinance(); renderReminders(); renderCustModal(); showTab(currentTab);
+}
 
 function cardHTML(it) {
   const out = it.stock <= 0, low = it.stock < 10;
@@ -235,6 +353,23 @@ function renderBilling() {
   $('grandTotal').textContent = inr(total);
 }
 
+function renderOrders() {
+  const q = ($('ordSearch').value || '').toLowerCase().trim();
+  let list = [...S.orders].sort((a, b) => b.no - a.no);
+  if (q) list = list.filter(o => o.invoice.toLowerCase().includes(q) || o.name.toLowerCase().includes(q) || o.phone.includes(q));
+  const shown = list.slice(0, 100);
+  $('ordBody').innerHTML = shown.length ? shown.map(o => `<tr class="border-t border-yellow-200 align-top">
+    <td class="p-3 font-bold whitespace-nowrap">${esc(o.invoice)}</td>
+    <td class="p-3 whitespace-nowrap">${esc(fmtDT(o.at))}</td>
+    <td class="p-3">${esc(o.name)}<div class="text-xs opacity-70">${esc(o.phone)}</div></td>
+    <td class="p-3 hidden md:table-cell text-xs">${esc(itemsText(o))}</td>
+    <td class="p-3">${payBadge(o.payment)}</td>
+    <td class="p-3 font-bold">${inr(o.total)}</td>
+    <td class="p-3 text-right whitespace-nowrap"><button onclick="downloadBill('${o.invoice}')" class="border-2 border-red-900 rounded px-2 py-0.5 text-xs font-bold">PDF</button></td>
+  </tr>`).join('') : '<tr><td colspan="7" class="p-6 text-center opacity-60">No orders yet.</td></tr>';
+  $('ordNote').textContent = list.length > 100 ? `Showing latest 100 of ${list.length}. Use search to find older bills.` : '';
+}
+
 function renderInventory() {
   const rows = [...S.items].sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
   $('invBody').innerHTML = rows.map(i => `<tr class="border-t border-yellow-200">
@@ -260,8 +395,76 @@ function renderCustomers() {
     <td class="p-3 font-semibold">${esc(c.name)}</td>
     <td class="p-3"><a href="tel:${esc(c.phone)}" class="underline">${esc(c.phone)}</a></td>
     <td class="p-3 font-bold">${inr(c.totalSpent)}</td>
-    <td class="p-3">${c.orders}</td></tr>`).join('')
-    : '<tr><td colspan="5" class="p-6 text-center opacity-60">No customers yet.</td></tr>';
+    <td class="p-3">${c.orders}</td>
+    <td class="p-3 text-right"><button onclick="openCust('${esc(c.phone)}')" class="border-2 border-red-900 rounded px-2 py-0.5 text-xs font-bold whitespace-nowrap">Past Orders</button></td></tr>`).join('')
+    : '<tr><td colspan="6" class="p-6 text-center opacity-60">No customers yet.</td></tr>';
+}
+
+/* ----- Customer history modal ----- */
+function openCust(phone) { openCustPhone = phone; renderCustModal(); $('custModal').classList.remove('hidden'); }
+function closeCust() { openCustPhone = ''; $('custModal').classList.add('hidden'); }
+function renderCustModal() {
+  if (!openCustPhone) return;
+  const c = S.customers[openCustPhone];
+  if (!c) return closeCust();
+  const orders = S.orders.filter(o => o.phone === openCustPhone).sort((a, b) => b.no - a.no);
+  $('custModalHead').innerHTML = `<h3 class="text-lg font-extrabold">${esc(c.name)}</h3>
+    <p class="text-sm">📞 ${esc(c.phone)} · ${c.orders} orders · ${inr(c.totalSpent)} spent</p>`;
+  $('custModalBody').innerHTML = orders.length ? orders.map(o => `<div class="bg-white border-2 border-red-900 rounded-lg p-3">
+    <div class="flex justify-between items-center gap-2">
+      <div><span class="font-extrabold">${esc(o.invoice)}</span> <span class="text-xs opacity-70">· ${esc(fmtDT(o.at))}</span></div>
+      <div class="flex items-center gap-2">${payBadge(o.payment)}<span class="font-extrabold">${inr(o.total)}</span></div>
+    </div>
+    <div class="text-sm mt-1">${esc(itemsText(o))}</div>
+    <div class="mt-2 flex gap-2">
+      <button onclick="downloadBill('${o.invoice}')" class="border-2 border-red-900 rounded px-2 py-0.5 text-xs font-bold">⬇ PDF Bill</button>
+      <a href="${esc(waLink(o))}" target="_blank" rel="noopener" class="border-2 border-green-700 text-green-800 rounded px-2 py-0.5 text-xs font-bold">WhatsApp</a>
+    </div></div>`).join('')
+    : '<p class="text-sm opacity-60 text-center py-4">Detailed order history is not available for this customer (orders placed before this feature was added).</p>';
+}
+
+/* ----- Sales & Expenses ----- */
+function setPeriod(p) {
+  const t = today(), d = new Date();
+  let from = '', to = '';
+  if (p === 'today') { from = t; to = t; }
+  else if (p === 'month') { from = ymd(new Date(d.getFullYear(), d.getMonth(), 1)); to = t; }
+  $('fFrom').value = from; $('fTo').value = to;
+  renderFinance();
+}
+function renderFinance() {
+  const f = $('fFrom').value, t = $('fTo').value;
+  const inRange = (ds) => (!f || ds >= f) && (!t || ds <= t);
+  const os = S.orders.filter(o => inRange(ymd(o.at)));
+  const ex = S.expenses.filter(e => inRange(e.date));
+  const sum = (arr, k) => arr.reduce((a, x) => a + x[k], 0);
+  const sales = sum(os, 'total'), exp = sum(ex, 'amount'), profit = sales - exp;
+  const cash = sum(os.filter(o => o.payment === 'Cash'), 'total');
+  const upi = sum(os.filter(o => o.payment === 'UPI'), 'total');
+  const card = (label, val, cls = '') => `<div class="bg-white border-2 border-red-900 rounded-xl p-3">
+    <div class="text-xs font-bold opacity-70">${label}</div><div class="text-xl font-extrabold ${cls}">${val}</div></div>`;
+  $('finCards').innerHTML =
+    card('Total Sales', inr(sales)) +
+    card('Total Expenses', inr(exp)) +
+    card('Net Profit', (profit < 0 ? '−' : '') + inr(Math.abs(profit)), profit < 0 ? 'text-red-600' : 'text-green-700') +
+    card('Orders', os.length) +
+    card('Cash Sales', inr(cash)) +
+    card('UPI Sales', inr(upi));
+
+  const cats = {};
+  ex.forEach(e => cats[e.category] = (cats[e.category] || 0) + e.amount);
+  $('catBreak').innerHTML = Object.entries(cats).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<span class="bg-yellow-200 border border-red-900 rounded-full px-3 py-1 text-xs font-bold">${esc(k)}: ${inr(v)}</span>`).join('');
+
+  const rows = [...ex].sort((a, b) => b.date.localeCompare(a.date) || (b.created || '').localeCompare(a.created || ''));
+  $('expBody').innerHTML = rows.length ? rows.map(e => `<tr class="border-t border-yellow-200">
+    <td class="p-3 whitespace-nowrap">${esc(fmtD(e.date))}</td>
+    <td class="p-3">${esc(e.category)}</td>
+    <td class="p-3">${esc(e.note)}</td>
+    <td class="p-3">${payBadge(e.payment)}</td>
+    <td class="p-3 font-bold">${inr(e.amount)}</td>
+    <td class="p-3 text-right"><button onclick="deleteExpense('${e.id}')" class="text-red-600 font-bold">✕</button></td></tr>`).join('')
+    : '<tr><td colspan="6" class="p-6 text-center opacity-60">No expenses in this period.</td></tr>';
 }
 
 function renderReminders() {
@@ -281,7 +484,14 @@ function renderReminders() {
   $('remBadge').textContent = pending; $('remBadge').classList.toggle('hidden', !pending);
 }
 
-/* ---------- Cart ---------- */
+/* ---------- Cart & payment ---------- */
+function setPay(m) {
+  payMode = m;
+  [['payCash', 'Cash'], ['payUPI', 'UPI']].forEach(([id, v]) => {
+    $(id).classList.toggle('bg-red-900', v === m);
+    $(id).classList.toggle('text-yellow-100', v === m);
+  });
+}
 function addToCart(id) {
   const it = S.items.find(i => i.id === id);
   if (!it) return;
@@ -316,14 +526,129 @@ async function checkout() {
   const btn = $('checkoutBtn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {
     const items = Object.entries(cart).map(([id, qty]) => ({ id, qty }));
-    const r = await api('checkout', { name, phone, items });
+    const r = await api('checkout', { name, phone, items, payment: payMode });
     cart = {}; $('custName').value = ''; $('custPhone').value = ''; $('custHint').textContent = '';
-    lastJson = ''; applyState(r.state);
-    alert('✅ Order saved! Total: ' + inr(r.total));
+    setPay('Cash');
+    push(r.state);
+    showOk(r.order);
   } catch (e) {
     alert('❌ ' + e.message);
     load(true);
   } finally { btn.disabled = false; btn.textContent = 'Complete Order & Save Data'; }
+}
+
+function showOk(o) {
+  $('okInv').textContent = o.invoice;
+  $('okMeta').textContent = `${inr(o.total)} · ${o.payment} · ${o.name}`;
+  $('okPdf').onclick = () => downloadBill(o.invoice);
+  $('okWa').href = waLink(o);
+  $('okModal').classList.remove('hidden');
+}
+function closeOk() { $('okModal').classList.add('hidden'); }
+
+/* ---------- WhatsApp text ---------- */
+function waLink(o) {
+  const lines = o.lines.map(l => `${l.name}${l.category === 'Jain' ? ' (Jain)' : ''} x${l.qty} = Rs.${l.price * l.qty}`).join('\n');
+  const msg = `*${BUSINESS.name}* - Invoice ${o.invoice}\n${fmtDT(o.at)}\n\n${lines}\n\n*Total: Rs.${o.total}* (${o.payment})\n\nThank you for ordering with us!`;
+  const ph = o.phone.length === 10 ? '91' + o.phone : o.phone;
+  return `https://wa.me/${ph}?text=${encodeURIComponent(msg)}`;
+}
+
+/* ---------- PDF bill ---------- */
+function downloadBill(inv) {
+  const o = S.orders.find(x => x.invoice === inv);
+  if (!o) return alert('Order not found.');
+  if (!window.jspdf) return alert('PDF library could not load. Check your internet connection and refresh the page.');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, M = 15;
+  const MAROON = [127, 29, 29], YELLOW = [252, 211, 77], LIGHT = [254, 249, 219];
+  const money = (n) => 'Rs. ' + Number(n).toLocaleString('en-IN');   // ₹ glyph is not in standard PDF fonts
+
+  // Header band
+  doc.setFillColor(...YELLOW); doc.rect(0, 0, W, 40, 'F');
+  doc.setFillColor(...MAROON); doc.rect(0, 40, W, 2, 'F');
+  doc.setTextColor(...MAROON);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(26); doc.text(BUSINESS.name, M, 19);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(BUSINESS.tagline || '', M, 27);
+  const info = [];
+  if (BUSINESS.address) info.push(...doc.splitTextToSize(BUSINESS.address, 75));
+  if (BUSINESS.phone) info.push('Phone: ' + BUSINESS.phone);
+  if (BUSINESS.gstin) info.push('GSTIN: ' + BUSINESS.gstin);
+  if (BUSINESS.fssai) info.push('FSSAI: ' + BUSINESS.fssai);
+  doc.setFontSize(9);
+  info.slice(0, 6).forEach((t, i) => doc.text(t, W - M, 12 + i * 5, { align: 'right' }));
+
+  // Title + meta
+  doc.setTextColor(...MAROON);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.text('INVOICE', M, 56);
+  const d = new Date(o.at);
+  const meta = [
+    ['Invoice No:', o.invoice],
+    ['Date:', d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })],
+    ['Time:', d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })],
+    ['Payment:', o.payment],
+  ];
+  doc.setFontSize(10);
+  meta.forEach(([k, v], i) => {
+    doc.setFont('helvetica', 'bold'); doc.text(k, 135, 52 + i * 6);
+    doc.setFont('helvetica', 'normal'); doc.text(String(v), 160, 52 + i * 6);
+  });
+
+  // Billed to
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(120, 120, 120); doc.text('BILLED TO', M, 66);
+  doc.setTextColor(...MAROON); doc.setFontSize(12); doc.text(o.name, M, 72);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text('Phone: ' + o.phone, M, 78);
+
+  // Table
+  const X = { num: M + 3, item: M + 14, qty: 130, rate: 160, amt: W - M - 3 };
+  let y = 90;
+  const head = () => {
+    doc.setFillColor(...MAROON); doc.rect(M, y, W - 2 * M, 9, 'F');
+    doc.setTextColor(...YELLOW); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    doc.text('#', X.num, y + 6); doc.text('Item', X.item, y + 6);
+    doc.text('Qty', X.qty, y + 6, { align: 'right' });
+    doc.text('Rate', X.rate, y + 6, { align: 'right' });
+    doc.text('Amount', X.amt, y + 6, { align: 'right' });
+    y += 9;
+  };
+  head();
+  doc.setFont('helvetica', 'normal'); doc.setTextColor(...MAROON);
+  o.lines.forEach((l, i) => {
+    if (y > 262) { doc.addPage(); y = 20; head(); doc.setFont('helvetica', 'normal'); doc.setTextColor(...MAROON); }
+    if (i % 2 === 0) { doc.setFillColor(...LIGHT); doc.rect(M, y, W - 2 * M, 8, 'F'); }
+    const label = l.name + (l.category === 'Jain' ? ' (Jain)' : '');
+    doc.text(String(i + 1), X.num, y + 5.5);
+    doc.text(doc.splitTextToSize(label, 85)[0], X.item, y + 5.5);
+    doc.text(String(l.qty), X.qty, y + 5.5, { align: 'right' });
+    doc.text(money(l.price), X.rate, y + 5.5, { align: 'right' });
+    doc.text(money(l.price * l.qty), X.amt, y + 5.5, { align: 'right' });
+    y += 8;
+  });
+
+  // Total
+  if (y > 245) { doc.addPage(); y = 20; }
+  y += 4;
+  doc.setDrawColor(...MAROON); doc.setLineWidth(0.4); doc.line(M, y, W - M, y);
+  y += 4;
+  const qtyTotal = o.lines.reduce((a, l) => a + l.qty, 0);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+  doc.text(`Total items: ${qtyTotal}`, M, y + 8);
+  doc.setFillColor(...YELLOW); doc.rect(105, y, W - M - 105, 12, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+  doc.text('Grand Total', 109, y + 8);
+  doc.text(money(o.total), X.amt, y + 8, { align: 'right' });
+  y += 20;
+  doc.setFontSize(10);
+  doc.text(`Paid via: ${o.payment}`, W - M, y, { align: 'right' });
+
+  // Footer
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+  doc.text(`Thank you for choosing ${BUSINESS.name}! Visit again.`, W / 2, 281, { align: 'center' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120, 120, 120);
+  doc.text('This is a computer-generated invoice and does not require a signature.', W / 2, 287, { align: 'center' });
+
+  doc.save(`${BUSINESS.name.replace(/\s+/g, '')}-Invoice-${o.invoice}.pdf`);
 }
 
 /* ---------- Inventory actions ---------- */
@@ -344,13 +669,30 @@ async function saveItem() {
       id: $('mId').value || undefined, name: $('mName').value, category: $('mCat').value,
       price: $('mPrice').value, stock: $('mStock').value,
     });
-    closeItemModal(); lastJson = ''; applyState(r.state);
+    closeItemModal(); push(r.state);
   } catch (e) { alert('❌ ' + e.message); }
 }
 async function deleteItem(id) {
   const it = S.items.find(i => i.id === id);
   if (!confirm(`Delete "${it.name}" (${it.category}) from the menu?`)) return;
-  try { const r = await api('item-delete', { id }); lastJson = ''; applyState(r.state); }
+  try { const r = await api('item-delete', { id }); push(r.state); }
+  catch (e) { alert('❌ ' + e.message); }
+}
+
+/* ---------- Expenses ---------- */
+async function addExpense() {
+  try {
+    const r = await api('expense', {
+      date: $('eDate').value || today(), category: $('eCat').value, note: $('eNote').value,
+      amount: $('eAmt').value, payment: $('ePay').value,
+    });
+    $('eNote').value = ''; $('eAmt').value = '';
+    push(r.state);
+  } catch (e) { alert('❌ ' + e.message); }
+}
+async function deleteExpense(id) {
+  if (!confirm('Delete this expense?')) return;
+  try { const r = await api('expense-delete', { id }); push(r.state); }
   catch (e) { alert('❌ ' + e.message); }
 }
 
@@ -361,21 +703,24 @@ async function addReminder() {
   try {
     const r = await api('reminder', { text, due: $('remDue').value });
     $('remText').value = ''; $('remDue').value = '';
-    lastJson = ''; applyState(r.state);
+    push(r.state);
   } catch (e) { alert('❌ ' + e.message); }
 }
-async function toggleReminder(id) { try { const r = await api('reminder-toggle', { id }); lastJson = ''; applyState(r.state); } catch (e) { alert(e.message); } }
-async function deleteReminder(id) { try { const r = await api('reminder-delete', { id }); lastJson = ''; applyState(r.state); } catch (e) { alert(e.message); } }
+async function toggleReminder(id) { try { const r = await api('reminder-toggle', { id }); push(r.state); } catch (e) { alert(e.message); } }
+async function deleteReminder(id) { try { const r = await api('reminder-delete', { id }); push(r.state); } catch (e) { alert(e.message); } }
 
 /* ---------- Reset ---------- */
 async function resetData() {
-  if (!confirm('⚠ This will erase ALL customers, reminders and restore default menu & stock (50 each) for EVERY device. Continue?')) return;
+  if (!confirm('⚠ This will erase ALL orders, customers, expenses and reminders, restart invoice numbers from TT-0001, and restore default menu & stock (50 each) for EVERY device. Continue?')) return;
   if (prompt('Type RESET to confirm:') !== 'RESET') return;
-  try { const r = await api('reset', {}); cart = {}; lastJson = ''; applyState(r.state); alert('Data reset.'); }
+  try { const r = await api('reset', {}); cart = {}; push(r.state); alert('Data reset.'); }
   catch (e) { alert('❌ ' + e.message); }
 }
 
 /* ---------- Boot ---------- */
+$('eDate').value = today();
+setPay('Cash');
+setPeriod('month');
 showTab(currentTab);
 load();
 setInterval(() => { if (!document.hidden) load(true); }, 15000);   // pick up changes from other phones
